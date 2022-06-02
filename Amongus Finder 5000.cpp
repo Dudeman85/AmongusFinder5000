@@ -11,15 +11,10 @@ int main()
 {
 	//Variables for reading in source image and template
 	vector<unsigned char> source;
-	vector<unsigned char> tempSource;
 	unsigned width, height;
-	unsigned templateWidth, templateHeight;
 
 	//Load and decode PNG pixels into a vector with 4 bytes per pixel
 	lodepng::decode(source, width, height, "source.png");
-
-	//Load amongus
-	lodepng::decode(tempSource, templateWidth, templateHeight, "template.png");
 
 	//2D Vector storing every color of source
 	vector<vector<unsigned int>> image;
@@ -34,41 +29,52 @@ int main()
 	}
 
 	//Vector for storing template
-	vector<vector<vector<int>>> templates;
+	vector<vector<vector<float>>> templates;
+	vector<unsigned> templateWidths, templateHeights;
 
-	//Vector for template data
-	vector<vector<int>> temp;
-	temp.resize(templateWidth);
-	for (unsigned i = 0; i < templateWidth; i++)
-		temp[i].resize(templateHeight);
-
-	//Converts the template pixel vector to a 2D vector pattern
-	for (int i = 0; i < tempSource.size(); i += 4)
+	//Get all template images from templates folder
+	for (const auto& entry : filesystem::directory_iterator("templates")) 
 	{
-		int* pixel = &temp[i / 4 % templateWidth][(int)floor(i / 4 / templateWidth)];
+		vector<unsigned char> tempSource;
+		unsigned tempWidth, tempHeight;
 
-		if ((int)tempSource[i] == 255)
-			*pixel = 0;
-		else if ((int)tempSource[i] == 0)
-			*pixel = 2;
-		else
-			*pixel = 1;
+		//Load amongus
+		lodepng::decode(tempSource, tempWidth, tempHeight, entry.path().string());
+
+		//Vectors for template and mirrored template data
+		vector<vector<float>> temp, mirroredTemp;
+		temp.resize(tempWidth);
+		mirroredTemp.resize(tempWidth);
+		for (unsigned i = 0; i < tempWidth; i++)
+		{
+			temp[i].resize(tempHeight);
+			mirroredTemp[i].resize(tempHeight);
+		}
+
+		//Converts the template pixel vector to a 2D vector pattern for matching
+		for (int i = 0; i < tempSource.size(); i += 4)
+		{
+			float* pixel = &temp[i / 4 % tempWidth][(int)floor(i / 4 / tempWidth)];
+
+			if ((int)tempSource[i] == 255) //White is ignored
+				*pixel = 0;
+			else if ((int)tempSource[i] == 0) //Black must be different from reds
+				*pixel = 2;
+			else  //reds are important ranked by shade where darker(lower) is more important
+				*pixel = 1; //(float)tempSource[i] / 255;
+		}
+
+		//Mirror the template
+		for (unsigned x = 0; x < tempWidth; x++)
+			for (unsigned y = 0; y < tempHeight; y++)
+				mirroredTemp[x][y] = temp[tempWidth - x - 1][y];
+
+		//Add normal and mirrored templates to list
+		templateHeights.push_back(tempHeight);
+		templateWidths.push_back(tempWidth);
+		templates.push_back(temp);
+		templates.push_back(mirroredTemp);
 	}
-
-	//Vector for a mirrored version of the template
-	vector<vector<int>> mirroredTemp;
-	mirroredTemp.resize(templateWidth);
-	for (unsigned i = 0; i < templateWidth; i++)
-		mirroredTemp[i].resize(templateHeight);
-
-	//Mirror the template
-	for (unsigned x = 0; x < templateWidth; x++)
-		for (unsigned y = 0; y < templateHeight; y++)
-			mirroredTemp[x][y] = temp[templateWidth - x - 1][y];
-
-	//Add normal and mirrored templates to list
-	templates.push_back(temp);
-	templates.push_back(mirroredTemp);
 
 	//Print the templates
 	for (int i = 0; i < templates.size(); i++)
@@ -84,10 +90,10 @@ int main()
 		cout << endl;
 	}
 
-	//Pixel matrix for storing each amongus
+	//Pixel matrix for storing each amongus in a catalogue
 	int catalogueWidth = 40;
 	vector<vector<unsigned int>> catalogue;
-	catalogue.resize(catalogueWidth * (templateWidth + 1));
+	catalogue.resize(catalogueWidth * (templateWidths[0] + 1));
 	for (unsigned i = 0; i < catalogue.size(); i++)
 		catalogue[i].resize(height);
 
@@ -98,9 +104,9 @@ int main()
 	int hits = 0;
 
 	//Loop through every pixel and match it to each template
-	for (unsigned x = 0; x < width - templateWidth + 3; x++)
+	for (unsigned x = 0; x < width - templateWidths[0] + 3; x++)
 	{
-		for (unsigned y = 0; y < height - templateHeight + 3; y++)
+		for (unsigned y = 0; y < height - templateHeights[0] + 3; y++)
 		{
 			//Get the color to match to 1 from a known pixel
 			color = image[x + 2][y + 1];
@@ -116,7 +122,7 @@ int main()
 						//Check that the pixel is in bounds
 						if (x + xi > width || y + yi > height)
 							continue;
-						
+
 						//If the pixel does not match the template pattern continue to next pattern
 						if (templates[i][xi][yi] == 1 && image[x + xi][y + yi] != color)
 							goto miss;
@@ -132,10 +138,10 @@ int main()
 						if (x + xi < width && y + yi < height)
 						{
 							//Copy to catalogue
-							catalogue[hits * (templateWidth + 1) - floor(hits / catalogueWidth) * catalogueWidth * (templateWidth + 1) + xi][floor(hits / catalogueWidth) * (templateHeight + 1) + yi] = image[x + xi][y + yi];
+							catalogue[hits * (templateWidths[0] + 1) - floor(hits / catalogueWidth) * catalogueWidth * (templateWidths[0] + 1) + xi][floor(hits / catalogueWidth) * (templateHeights[0] + 1) + yi] = image[x + xi][y + yi];
 
 							//Draw a red outline around the detection if it's in bounds
-							if (xi == 0 || yi == 0 || xi == templateWidth - 1 || yi == templateHeight - 1)
+							if (xi == 0 || yi == 0 || xi == templateWidths[0] - 1 || yi == templateHeights[0] - 1)
 								imageCopy[x + xi][y + yi] = 0xFF0000FF;
 						}
 					}
@@ -159,7 +165,7 @@ int main()
 	vector<unsigned char> fResults = MatrixToRGBA(imageCopy);
 
 	//Output results to a PNG
-	lodepng::encode("catalogue.png", fCatalogue, catalogueWidth * (templateWidth + 1), floor(hits / catalogueWidth) * (templateHeight + 1) + templateHeight);
+	lodepng::encode("catalogue.png", fCatalogue, catalogueWidth * (templateWidths[0] + 1), floor(hits / catalogueWidth)* (templateHeights[0] + 1) + templateHeights[0]);
 	lodepng::encode("results.png", fResults, width, height);
 
 	cout << endl;

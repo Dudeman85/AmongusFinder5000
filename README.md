@@ -15,4 +15,16 @@ It will return two images "results.png" and "catalogue.png" Results.png contains
 
 To match the template, it is slid across every pixel of the source and evaluated at every pixel position. Therefore this can be a somewhat costly operation if working with multiple very large templates or sources.
 
+## Todo
+- Change the search method to go through image seperately for each template (maybe not mirrored, should calculate performance difference)
+- Fix problem with different sized templates
+- Fix the identifier for the main color
+- Improve catalogue arrangement and crop functions
+- Get coffee
+- Add support for multiple main colors
+- Add handling for normalized importance values
+- Add naive bayes, or other classifiers for handling importance values
+- Figure out how uncommented stuff works andthe comment it
+
+
 Thanks to Lode Vandevenne for [LodePNG](https://github.com/lvandeve/lodepng)
