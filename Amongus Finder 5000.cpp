@@ -28,12 +28,13 @@ int main()
 		image[i / 4 % width][(int)floor(i / 4 / width)] = (((source[i]) << 24 | source[i + 1] << 16 | source[i + 2] << 8 | source[i + 3]));
 	}
 
-	//Vector for storing template
+	//Vector for storing template data
 	vector<vector<vector<float>>> templates;
 	vector<unsigned> templateWidths, templateHeights;
+	vector<vector<int>> knownPixelPos;
 
 	//Get all template images from templates folder
-	for (const auto& entry : filesystem::directory_iterator("templates")) 
+	for (const auto& entry : filesystem::directory_iterator("templates"))
 	{
 		vector<unsigned char> tempSource;
 		unsigned tempWidth, tempHeight;
@@ -61,7 +62,14 @@ int main()
 			else if ((int)tempSource[i] == 0) //Black must be different from reds
 				*pixel = 2;
 			else  //reds are important ranked by shade where darker(lower) is more important
-				*pixel = 1; //(float)tempSource[i] / 255;
+			{
+				*pixel = 1; //(float)tempSource[i] / 255; (Not Implemented)
+				if (templates.size() == knownPixelPos.size()) {
+
+					knownPixelPos.push_back(vector<int>{(int)(i / 4 % tempWidth), (int)floor(i / 4 / tempWidth)}); //Known important pixel for normal template
+					knownPixelPos.push_back(vector<int>{(int)(tempWidth - 1 - i / 4 % tempWidth), (int)floor(i / 4 / tempWidth)}); //Known importnat pixel for mirrored template
+				}
+			}
 		}
 
 		//Mirror the template
@@ -70,6 +78,8 @@ int main()
 				mirroredTemp[x][y] = temp[tempWidth - x - 1][y];
 
 		//Add normal and mirrored templates to list
+		templateHeights.push_back(tempHeight);
+		templateWidths.push_back(tempWidth);
 		templateHeights.push_back(tempHeight);
 		templateWidths.push_back(tempWidth);
 		templates.push_back(temp);
@@ -83,7 +93,10 @@ int main()
 		{
 			for (int x = 0; x < templates[i].size(); x++)
 			{
-				cout << (char)(178 - templates[i][x][y]) << (char)(178 - templates[i][x][y]);
+				if (knownPixelPos[i][0] == x && knownPixelPos[i][1] == y)
+					cout << (char)(219) << (char)(219);
+				else
+					cout << (char)(178 - templates[i][x][y]) << (char)(178 - templates[i][x][y]);
 			}
 			cout << endl;
 		}
@@ -103,26 +116,27 @@ int main()
 	int color = 0;
 	int hits = 0;
 
-	//Loop through every pixel and match it to each template
-	for (unsigned x = 0; x < width - templateWidths[0] + 3; x++)
+	//Loop through every template
+	for (int i = 0; i < templates.size(); i++)
 	{
-		for (unsigned y = 0; y < height - templateHeights[0] + 3; y++)
+		cout << i;
+		//Loop through every pixel
+		for (unsigned x = 0; x < width - templateWidths[i] + 1; x++)
 		{
-			//Get the color to match to 1 from a known pixel
-			color = image[x + 2][y + 1];
-
-			//Check every template for a match
-			for (int i = 0; i < templates.size(); i++)
+			for (unsigned y = 0; y < height - templateHeights[i] + 1; y++)
 			{
+				//Get the color to match to 1 from a known pixel
+				color = image[x + knownPixelPos[i][0]][y + knownPixelPos[i][1]];
+				
 				//Loop through every position of the template
 				for (int xi = 0; xi < templates[i].size(); xi++)
 				{
 					for (int yi = 0; yi < templates[i][xi].size(); yi++)
 					{
 						//Check that the pixel is in bounds
-						if (x + xi > width || y + yi > height)
+						if (x + xi >= width && y + yi >= height)
 							continue;
-
+						
 						//If the pixel does not match the template pattern continue to next pattern
 						if (templates[i][xi][yi] == 1 && image[x + xi][y + yi] != color)
 							goto miss;
@@ -141,20 +155,20 @@ int main()
 							catalogue[hits * (templateWidths[0] + 1) - floor(hits / catalogueWidth) * catalogueWidth * (templateWidths[0] + 1) + xi][floor(hits / catalogueWidth) * (templateHeights[0] + 1) + yi] = image[x + xi][y + yi];
 
 							//Draw a red outline around the detection if it's in bounds
-							if (xi == 0 || yi == 0 || xi == templateWidths[0] - 1 || yi == templateHeights[0] - 1)
+							if (xi == 0 || yi == 0 || xi == templateWidths[i] - 1 || yi == templateHeights[i] - 1)
 								imageCopy[x + xi][y + yi] = 0xFF0000FF;
 						}
 					}
 				}
 				//Increment hit counter and continue to the next pixel position
 				hits++;
-				break;
+				continue;
 			miss:
 				continue;
 			}
+			if (x % 160 == 0)
+				cout << ". ";
 		}
-		if (x % 160 == 0)
-			cout << ". ";
 	}
 
 	cout << "\n\nFound " << hits << " amonguses";
@@ -165,7 +179,7 @@ int main()
 	vector<unsigned char> fResults = MatrixToRGBA(imageCopy);
 
 	//Output results to a PNG
-	lodepng::encode("catalogue.png", fCatalogue, catalogueWidth * (templateWidths[0] + 1), floor(hits / catalogueWidth)* (templateHeights[0] + 1) + templateHeights[0]);
+	lodepng::encode("catalogue.png", fCatalogue, catalogueWidth * (templateWidths[0] + 1), floor(hits / catalogueWidth) * (templateHeights[0] + 1) + templateHeights[0]);
 	lodepng::encode("results.png", fResults, width, height);
 
 	cout << endl;
